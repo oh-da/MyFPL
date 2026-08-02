@@ -45,9 +45,16 @@ python -m fpl_optimizer.cli
 # Use current-season players and prices from the live FPL API
 python -m fpl_optimizer.cli --live
 
+# Lock players into the squad and build the best team around them
+python -m fpl_optimizer.cli --lock Haaland --lock Saka
+
 # Options
 python -m fpl_optimizer.cli --budget 100.0 --alpha 0.5 --data data/fpl_2025-26_stats.csv
 ```
+
+`--lock` guarantees a place in the 15 (not necessarily the starting XI);
+names are case-insensitive and may be partial, as long as they match a
+single player.
 
 `--alpha 1.0` trusts raw points only; `--alpha 0.0` trusts expected points
 only.
