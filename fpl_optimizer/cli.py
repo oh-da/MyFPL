@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from . import data, projections, rules
-from .optimizer import optimize_squad
+from .optimizer import optimize_squad, resolve_player
 
 DEFAULT_CSV = "data/fpl_2025-26_stats.csv"
 
@@ -27,6 +27,14 @@ def main(argv=None):
         "--budget", type=float, default=rules.BUDGET, help="budget in millions"
     )
     parser.add_argument(
+        "--lock",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="force this player into the squad and build around them "
+        "(repeat the flag to lock several, e.g. --lock Haaland --lock Saka)",
+    )
+    parser.add_argument(
         "--alpha",
         type=float,
         default=projections.DEFAULT_ALPHA,
@@ -45,9 +53,16 @@ def main(argv=None):
         source = f"last-season data only ({args.data})"
 
     players = projections.project_points(players, alpha=args.alpha)
-    squad = optimize_squad(players, budget=args.budget)
+    try:
+        locked = [resolve_player(players, name) for name in args.lock]
+    except ValueError as e:
+        parser.error(str(e))
+    squad = optimize_squad(players, budget=args.budget, locked=locked)
 
     print(f"Source: {source}")
+    if locked:
+        names = ", ".join(players.loc[i, "web_name"] for i in locked)
+        print(f"Locked in: {names}")
     print(f"Budget: {args.budget:.1f}m | Spent: {squad.total_cost:.1f}m "
           f"| In the bank: {args.budget - squad.total_cost:.1f}m")
     print(f"Formation: {squad.formation} | "

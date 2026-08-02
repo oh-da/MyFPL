@@ -16,6 +16,26 @@ from . import rules
 BENCH_WEIGHT = 0.1
 
 
+def resolve_player(players: pd.DataFrame, name: str):
+    """Find the index of a player by (case-insensitive) name.
+
+    Tries an exact web_name match first, then substring. Raises ValueError
+    if the name is unknown or matches more than one player.
+    """
+    lowered = players["web_name"].str.lower()
+    matches = players[lowered == name.lower()]
+    if matches.empty:
+        matches = players[lowered.str.contains(name.lower(), regex=False)]
+    if matches.empty:
+        raise ValueError(f"no player matching {name!r}")
+    if len(matches) > 1:
+        options = ", ".join(
+            f"{r.web_name} ({r.team_name})" for r in matches.itertuples()
+        )
+        raise ValueError(f"{name!r} is ambiguous: {options}")
+    return matches.index[0]
+
+
 @dataclass
 class Squad:
     players: pd.DataFrame  # squad of 15, with 'starting' and 'captain' columns
@@ -38,8 +58,16 @@ class Squad:
         )
 
 
-def optimize_squad(players: pd.DataFrame, budget: float = rules.BUDGET) -> Squad:
-    """players needs columns: web_name, team_name, element_type, price, score."""
+def optimize_squad(
+    players: pd.DataFrame,
+    budget: float = rules.BUDGET,
+    locked: list | None = None,
+) -> Squad:
+    """players needs columns: web_name, team_name, element_type, price, score.
+
+    locked: player indices (rows of `players`) that must be in the squad;
+    the rest of the team is optimized around them.
+    """
     idx = list(players.index)
     pos = players["element_type"]
     price = players["price"]
@@ -76,6 +104,9 @@ def optimize_squad(players: pd.DataFrame, budget: float = rules.BUDGET) -> Squad
         prob += n_pos <= rules.XI_MAX[p]
 
     prob += pulp.lpSum(captain[i] for i in idx) == 1
+
+    for i in locked or []:
+        prob += in_squad[i] == 1
 
     status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
     if pulp.LpStatus[status] != "Optimal":

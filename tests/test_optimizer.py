@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from fpl_optimizer import rules
-from fpl_optimizer.optimizer import optimize_squad
+from fpl_optimizer.optimizer import optimize_squad, resolve_player
 from fpl_optimizer.projections import project_points
 
 
@@ -46,6 +46,40 @@ def test_squad_respects_all_rules():
 
     assert squad.players["captain"].sum() == 1
     assert squad.players.loc[squad.players["captain"], "starting"].all()
+
+
+def test_locked_players_forced_into_squad():
+    # An expensive zero-scoring forward is never picked on merit.
+    dud = pd.DataFrame(
+        [
+            {
+                "web_name": "dud",
+                "team_name": "club_dud",
+                "element_type": rules.FWD,
+                "price": 6.0,
+                "score": 0.0,
+            }
+        ]
+    )
+    pool = pd.concat([make_pool(), dud], ignore_index=True)
+    dud_idx = pool.index[-1]
+
+    free = optimize_squad(pool, budget=80.0)
+    assert dud_idx not in free.players.index
+
+    locked = optimize_squad(pool, budget=80.0, locked=[dud_idx])
+    assert dud_idx in locked.players.index
+    assert len(locked.players) == rules.SQUAD_SIZE
+    assert locked.total_cost <= 80.0 + 1e-6
+
+
+def test_resolve_player():
+    pool = make_pool()
+    assert resolve_player(pool, "P4_2") == pool[pool["web_name"] == "p4_2"].index[0]
+    with pytest.raises(ValueError, match="no player"):
+        resolve_player(pool, "Zidane")
+    with pytest.raises(ValueError, match="ambiguous"):
+        resolve_player(pool, "p4")  # matches every forward
 
 
 def test_infeasible_budget_raises():
